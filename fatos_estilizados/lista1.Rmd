@@ -3,14 +3,21 @@
 #renv::init()
 
 renv::restore(clean = TRUE)
-packages <- c("yfR", "rugarch", "tidyverse", "ggthemes", "cowplot", "conflicted")
+packages <- c(
+    "yfR",
+    "rugarch",
+    "tidyverse",
+    "ggthemes",
+    "cowplot",
+    "conflicted"
+)
 
 # Instalar pacotes que ainda não estão instalados
-new_packages <- packages[!(packages %in% installed.packages()[,"Package"])]
+new_packages <- packages[!(packages %in% installed.packages()[, "Package"])]
 if (length(new_packages)) install.packages(new_packages)
 ```
 ```{r}
-#remotes::install_github('msperlin/yfR')
+#remotes::install_github("msperlin/yfR")
 
 # Carregar pacotes
 library(conflicted)
@@ -19,6 +26,8 @@ library(yfR)
 library(rugarch)
 library(tidyverse)
 library(ggthemes)
+library(ggplot2)
+library(dplyr)
 
 # Limpar o diretório
 rm(list = ls())
@@ -28,11 +37,13 @@ rm(list = ls())
 # Função para obter dados do Yahoo Finance
 get_data <- function(tickers) {
   assets <- suppressMessages(
-    yfR::yf_get(tickers,
-                first_date = '2014-01-01',
-                last_date = Sys.time(),
-                type_return = "log",
-                freq_data = "daily")
+    yfR::yf_get(
+        tickers,
+        first_date = "2014-01-01",
+        last_date = Sys.time(),
+        type_return = "log",
+        freq_data = "daily"
+    )
   )
   assets
 }
@@ -41,101 +52,151 @@ get_data <- function(tickers) {
 # Função para plotar gráfico de preços
 plot_prices <- function(data, iticker) {
   data %>%
-    dplyr::filter(ticker == iticker) %>%
-    ggplot(aes(ref_date, price_close)) +
-    geom_line(color = '#006600') +
-    labs(x = "", y = 'Preço Fechamento', title = paste0("Cotação Diária da ", iticker),
-         subtitle = "Período: de 02/01/2014 a 10/09/2021",
-         caption = "Fonte: B3") +
+    dplyr::filter(data$ticker == iticker) %>%
+    ggplot(aes(
+        x = ref_date,
+        y = price_close
+    )) +
+    geom_line(color = "#006600") +
+    labs(
+        x = "",
+        y = "Preço Fechamento",
+        title = paste0("Cotação Diária da ", iticker),
+        subtitle = "Período: de 02/01/2014 a 10/09/2021",
+        caption = "Fonte: B3") +
     theme_economist()
 }
 
 # Função para plotar gráfico de retornos diários
 plot_returns <- function(data, iticker) {
   data %>%
-    dplyr::filter(ticker == iticker) %>%
-    ggplot(aes(ref_date, ret_closing_prices)) +
-    geom_line(color = '#006600') +
-    labs(x = "", y = 'Retornos', title = paste0("Retornos da ", iticker),
-         subtitle = "Período: de 02/01/2014 a 10/09/2021",
-         caption = "Fonte: B3") +
+    dplyr::filter(data$ticker == iticker) %>%
+    ggplot(aes(
+        x = ref_date,
+        y = ret_closing_prices
+    )) +
+    geom_line(color = "#006600") +
+    labs(
+        x = "",
+        y = "Retornos",
+        title = paste0("Retornos da ", iticker),
+        subtitle = "Período: de 02/01/2014 a 10/09/2021",
+        caption = "Fonte: B3"
+    ) +
     theme_economist()
 }
 
 # Função para plotar gráfico de retornos absolutos
 plot_volatility <- function(data, iticker) {
   data %>%
-    dplyr::filter(ticker == iticker) %>%
-    ggplot(aes(ref_date, abs(ret_closing_prices))) +
-    geom_line(color = '#006600') +
-    labs(x = "", y = 'Retornos absolutos', title = paste0("Retornos abs da ", iticker),
-         subtitle = "Período: de 02/01/2014 a 10/09/2021",
-         caption = "Fonte: B3") +
+    dplyr::filter(data$ticker == iticker) %>%
+    ggplot(aes(
+        x = ref_date,
+        y = abs(ret_closing_prices)
+    )) +
+    geom_line(color = "#006600") +
+    labs(
+        x = "",
+        y = "Retornos absolutos",
+        title = paste0("Retornos abs da ", iticker),
+        subtitle = "Período: de 02/01/2014 a 10/09/2021",
+        caption = "Fonte: B3"
+    ) +
     theme_economist()
 }
 
 # Função para plotar qqplot
 plot_qqplot <- function(data, iticker) {
   data %>%
-    dplyr::filter(ticker == iticker) %>%
-    ggplot(aes(sample = ret_closing_prices)) +
+    dplyr::filter(data$ticker == iticker) %>%
+    ggplot(aes(
+        sample = ret_closing_prices
+    )) +
     stat_qq() +
     stat_qq_line() +
-      labs(x = "Teórico" , y = 'Amostra', title = "QQplot",
-          subtitle = paste0("Retornos diários da ", iticker),
-          caption = "Fonte: Elaborado a partir de dados da B3") +
+      labs(
+        x = "Teórico",
+        y = "Amostra",
+        title = "QQplot",
+        subtitle = paste0("Retornos diários da ", iticker),
+        caption = "Fonte: Elaborado a partir de dados da B3"
+    ) +
     theme_economist()
 }
 
 # Função para plotar histograma
 plot_histogram <- function(data, iticker) {
   data %>%
-    dplyr::filter(ticker == iticker) %>%
-    ggplot(aes(x=ret_closing_prices,y=after_stat(density))) +
-      geom_histogram(color="white", fill="Dark grey",linetype="solid",alpha=0.8) +
-      geom_density(aes(x=ret_closing_prices,y=after_stat(density)),color="black") +
-      labs(x="", y='Densidade', title="Histograma",
-           subtitle=paste0("Retornos diários da ",iticker),
-           caption="Fonte: Elaborado a partir de dados da B3")+
+    dplyr::filter(data$ticker == iticker) %>%
+    ggplot(aes(
+        x = ret_closing_prices,
+        y = after_stat(density)
+        )) +
+      geom_histogram(
+        color = "white",
+        fill = "Dark grey",
+        linetype = "solid",
+        alpha = 0.8
+        ) +
+      geom_density(aes(
+        x = ret_closing_prices,
+        y = after_stat(density)),
+        color = "black"
+        ) +
+      labs(
+        x = "",
+        y = "Densidade",
+        title = "Histograma",
+        subtitle = paste0(
+            "Retornos diários da ",
+            iticker
+            ),
+        caption = "Fonte: Elaborado a partir de dados da B3"
+        ) +
       theme_economist()
 }
 ```
 
 ```{r, fig.width = 10, fig.height = 13}
 # Definir tickers das empresas desejadas
-tickers <- c('EQTL3.SA', 'VALE3.SA', 'WEGE3.SA','EMBR3.SA')
+tickers <- c(
+    "EQTL3.SA",
+    "VALE3.SA",
+    "WEGE3.SA",
+    "EMBR3.SA"
+    )
 
 # Obter dados
 assets <- get_data(tickers)
 colnames(assets)
 
 # plotando os graficos lado a lado
-plot_grid(#plot_prices(assets, 'EQTL3.SA'),
-            plot_returns(assets, 'EQTL3.SA'),
-            plot_qqplot(assets, 'EQTL3.SA'),
-            plot_volatility(assets, 'EQTL3.SA'),
-            plot_histogram(assets, 'EQTL3.SA'),
+plot_grid(#plot_prices(assets, "EQTL3.SA"),
+            plot_returns(assets, "EQTL3.SA"),
+            plot_qqplot(assets, "EQTL3.SA"),
+            plot_volatility(assets, "EQTL3.SA"),
+            plot_histogram(assets, "EQTL3.SA"),
             ncol = 2, nrow = 2)
 
-plot_grid(#plot_prices(assets, 'VALE3.SA'),
-            plot_returns(assets, 'VALE3.SA'),
-            plot_qqplot(assets, 'VALE3.SA'),
-            plot_volatility(assets, 'VALE3.SA'),
-            plot_histogram(assets, 'VALE3.SA'),
+plot_grid(#plot_prices(assets, "VALE3.SA"),
+            plot_returns(assets, "VALE3.SA"),
+            plot_qqplot(assets, "VALE3.SA"),
+            plot_volatility(assets, "VALE3.SA"),
+            plot_histogram(assets, "VALE3.SA"),
             ncol = 2, nrow = 2)
 
-plot_grid(#plot_prices(assets, 'WEGE3.SA'),
-            plot_returns(assets, 'WEGE3.SA'),
-            plot_qqplot(assets, 'WEGE3.SA'),
-            plot_volatility(assets, 'WEGE3.SA'),
-            plot_histogram(assets, 'WEGE3.SA'),
+plot_grid(#plot_prices(assets, "WEGE3.SA"),
+            plot_returns(assets, "WEGE3.SA"),
+            plot_qqplot(assets, "WEGE3.SA"),
+            plot_volatility(assets, "WEGE3.SA"),
+            plot_histogram(assets, "WEGE3.SA"),
             ncol = 2, nrow = 2)
 
-plot_grid(#plot_prices(assets, 'EMBR3.SA'),
-            plot_returns(assets, 'EMBR3.SA'),
-            plot_qqplot(assets, 'EMBR3.SA'),
-            plot_volatility(assets, 'EMBR3.SA'),
-            plot_histogram(assets, 'EMBR3.SA'),
+plot_grid(#plot_prices(assets, "EMBR3.SA"),
+            plot_returns(assets, "EMBR3.SA"),
+            plot_qqplot(assets, "EMBR3.SA"),
+            plot_volatility(assets, "EMBR3.SA"),
+            plot_histogram(assets, "EMBR3.SA"),
             ncol = 2, nrow = 2)
 ```
 
