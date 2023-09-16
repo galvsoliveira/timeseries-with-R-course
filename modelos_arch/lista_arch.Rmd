@@ -1,0 +1,255 @@
+---
+title: "Modelos da família ARCH: teórica e prática"
+author: "Gustavo"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+install.packages("renv")
+renv::init()
+
+# Pacotes a serem instalados/carregados
+packages <- c(
+    "yfR",
+    "rugarch",
+    "tidyverse",
+    "ggthemes",
+    "cowplot",
+    "conflicted",
+    "forecast",
+    "stats",
+    "tseries"
+)
+
+# Instalar pacotes que ainda não estão instalados
+new_packages <- packages[!(packages %in% installed.packages()[, "Package"])]
+if (length(new_packages)) install.packages(new_packages)
+
+# Carregar pacotes
+lapply(packages, require, character.only = TRUE)
+
+# Limpar o diretório
+rm(list = ls())
+```
+
+```{r}
+# Função para obter dados do Yahoo Finance
+get_data <- function(tickers, start_date = "2019-01-01") {
+  assets <- suppressMessages(
+    yfR::yf_get(
+        tickers,
+        first_date = start_date,
+        last_date = Sys.time(),
+        type_return = "log",
+        freq_data = "daily"
+    )
+  )
+  assets
+}
+```
+
+## Questão 1
+
+a) O modelo ARCH(1) é dado por:
+
+$$
+\begin{array}{l}{r_{t}=\delta+\epsilon_{t}}\\
+ {\epsilon_{t}=\sigma_{t}z_{t},\quad z_{t}\sim N(0,1)}\\
+{\sigma_{t}^{2}=\varpi+\alpha\epsilon_{t-1}^{2}}\\
+\end{array}
+$$
+onde $\varpi>0$ e $\alpha>0$. Seja o conjunto de informação $L_{t-1}=\{r_{1},r_{2},\ldots,r_{t-1}\}$.
+
+Os parâmetros $\varpi$ e $\alpha$ são restritos a serem positivos e não negativos, respectivamente, porque eles representam a variância condicional e incondicional dos retornos. A variância é uma medida de dispersão que não pode ser negativa.
+
+b) O modelo acima permite clusters de volatilidade porque a variância condicional $\sigma_t^2$ depende do quadrado do resíduo anterior $\epsilon_{t-1}^2$. Isso significa que quando um resíduo é grande em magnitude (positivo ou negativo), a variância condicional aumenta, levando a um aumento na volatilidade. Quando os resíduos são pequenos em magnitude, a variância condicional diminui, levando a uma diminuição na volatilidade. Isso permite que o modelo capture clusters de volatilidade, que é um fato empírico estilizado de séries financeiras.
+
+c) Dois fatos estilizados de séries temporais financeiras que não são capturados pelo modelo acima são:
+1. Assimetria (skewness): O modelo acima assume que os resíduos seguem uma distribuição normal, que é simétrica. No entanto, muitas séries financeiras apresentam assimetria, com caudas mais longas em uma direção do que na outra.
+2. Curtose (kurtosis): O modelo acima assume que os resíduos têm curtose igual a 3, o que é característico de uma distribuição normal. No entanto, muitas séries financeiras apresentam curtose maior do que 3, indicando caudas mais pesadas do que uma distribuição normal.
+
+d) A diferença entre variância condicional e incondicional é que a variância condicional é a variância dos retornos condicionada à informação disponível até o momento atual (no caso do modelo acima, $L_{t-1}$), enquanto a variância incondicional é a variância dos retornos sem levar em conta a informação disponível. A variância condicional pode mudar ao longo do tempo à medida que novas informações são incorporadas ao modelo, enquanto a variância incondicional é constante.
+
+
+## Questão 2
+
+As funções de autocorrelação (FAC) e autocorrelação parcial (FACP) são utilizadas no contexto de modelos da família ARCH para verificar a existência de heterocedasticidade condicional nos resíduos ao quadrado do modelo ajustado. Elas são úteis nas etapas de especificação e verificação do modelo.
+
+Na etapa de especificação do modelo, podemos analisar a FAC e FACP dos resíduos ao quadrado para verificar se há indícios de heterocedasticidade condicional. Se houver, podemos escolher um modelo da família ARCH para modelar a variância condicional.
+
+Na etapa de verificação do modelo, podemos analisar a FAC e FACP dos resíduos ao quadrado do modelo ajustado para verificar se o modelo é adequado. Se ainda houver indícios de heterocedasticidade condicional, é preciso ajustar o modelo para a variância condicional.
+
+## Questão 3
+
+Aqui vamos ajustar os modelos da família ARCH vistos em aula, considerando a ordem (1,1) com as distribuições normal e t-Student para as seguintes séries:
+
+a) log-retornos diários das ações da PETROBRAS
+b) log-retornos diários do IBOVESPA.
+
+Para ajustar os modelos, precisamos primeiro obter os dados das séries. Vamos usar o pacote yfR para obter os dados das ações da PETROBRAS e do IBOVESPA a partir de 2019.
+
+```{r}
+# Definir tickers das empresas desejadas
+tickers <- c("PETR4.SA","^BVSP")
+
+data <- get_data(tickers)
+colnames(data)
+
+petrobras_returns <- data %>%
+  dplyr::filter(ticker == "PETR4.SA") %>%
+  select(ref_date,ret_closing_prices)
+
+ibovespa_returns <- data %>%
+  dplyr::filter(ticker == "^BVSP") %>%
+  select(ref_date,ret_closing_prices)
+```
+
+Agora que temos os dados, podemos ajustar os modelos da família ARCH para cada uma das séries. Vamos começar com os log-retornos diários das ações da PETROBRAS.
+
+```{r}
+#especificação do modelo
+garch.spec = ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)), mean.model = list(armaOrder=c(0,0),include.mean=TRUE), distribution.model = "norm")
+
+#remover valores ausentes
+petrobras_returns <- na.omit(petrobras_returns)
+
+#ajuste do modelo
+garch.fit = ugarchfit(spec=garch.spec,data=petrobras_returns$ret_closing_prices)
+
+#resumo do modelo ajustado
+summary(garch.fit)
+```
+
+Agora vamos ajustar o mesmo modelo, mas usando a distribuição t-Student em vez da distribuição normal.
+
+```{r}
+#especificação do modelo
+garch.spec = ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)), mean.model = list(armaOrder=c(0,0),include.mean=TRUE), distribution.model = "std")
+
+#remover valores ausentes
+petrobras_returns <- na.omit(petrobras_returns)
+
+#ajuste do modelo
+garch.fit = ugarchfit(spec=garch.spec,data=petrobras_returns$ret_closing_prices)
+
+#resumo do modelo ajustado
+summary(garch.fit)
+```
+
+Agora vamos ajustar os mesmos modelos para os log-retornos diários do IBOVESPA.
+
+```{r}
+#especificação do modelo
+garch.spec = ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)), mean.model = list(armaOrder=c(0,0),include.mean=TRUE), distribution.model = "norm")
+
+#remover valores ausentes
+ibovespa_returns <- na.omit(ibovespa_returns)
+
+#ajuste do modelo
+garch.fit = ugarchfit(spec=garch.spec,data=ibovespa_returns$ret_closing_prices)
+
+#resumo do modelo ajustado
+summary(garch.fit)
+```
+
+Agora vamos ajustar o mesmo modelo, mas usando a distribuição t-Student em vez da distribuição normal.
+
+```{r}
+#especificação do modelo
+garch.spec = ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)), mean.model = list(armaOrder=c(0,0),include.mean=TRUE), distribution.model = "std")
+
+#ajuste do modelo
+garch.fit = ugarchfit(spec=garch.spec,data=ibovespa_returns$ret_closing_prices)
+
+#resumo do modelo ajustado
+summary(garch.fit)
+```
+
+## Questão 4
+
+Para os modelos ajustados acima, podemos calcular os coeficientes de persistência e half-life e interpretar os resultados. O coeficiente de persistência é a soma dos coeficientes $\alpha$ e $\beta$ do modelo GARCH(1,1) e mede a persistência da volatilidade. Quanto mais próximo de 1, mais persistente é a volatilidade. O half-life é o tempo que leva para a volatilidade retornar à metade de seu valor inicial após um choque e pode ser calculado como $\log(2)/\log(\alpha+\beta)$.
+
+Vamos calcular essas medidas para os modelos ajustados acima. Primeiro, para os log-retornos diários das ações da PETROBRAS.
+
+```{r}
+#tickers PETROBRAS
+tickers<-c("PETR4.SA")
+
+data <- get_data(tickers)
+
+petrobras_returns <- data %>%
+  dplyr::filter(ticker == "PETR4.SA") %>%
+  select(ref_date,ret_closing_prices)
+
+#remover valores ausentes
+petrobras_returns <- na.omit(petrobras_returns)
+
+#especificação do modelo
+garch.spec = ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)), mean.model = list(armaOrder=c(0,0),include.mean=TRUE), distribution.model = "norm")
+
+#ajuste do modelo
+garch.fit = ugarchfit(spec=garch.spec,data=petrobras_returns$ret_closing_prices)
+
+#coeficiente de persistência
+persistence <- coef(garch.fit)[3] + coef(garch.fit)[4]
+cat("Coeficiente de persistência (normal):", persistence, "\n")
+
+#half-life
+half_life <- log(2)/log(persistence)
+cat("Half-life (normal):", half_life, "\n")
+```
+
+Agora vamos calcular as mesmas medidas para o modelo ajustado com a distribuição t-Student.
+
+```{r}
+#especificação do modelo
+garch.spec = ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)), mean.model = list(armaOrder=c(0,0),include.mean=TRUE), distribution.model = "std")
+
+#ajuste do modelo
+garch.fit = ugarchfit(spec=garch.spec,data=petrobras_returns$ret_closing_prices)
+
+#coeficiente de persistência
+persistence <- coef(garch.fit)[3] + coef(garch.fit)[4]
+cat("Coeficiente de persistência (t-Student):", persistence, "\n")
+
+#half-life
+half_life <- log(2)/log(persistence)
+cat("Half-life (t-Student):", half_life, "\n")
+```
+
+Agora vamos calcular as mesmas medidas para os modelos ajustados para os log-retornos diários do IBOVESPA.
+
+```{r}
+#especificação do modelo
+garch.spec = ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)), mean.model = list(armaOrder=c(0,0),include.mean=TRUE), distribution.model = "norm")
+
+#ajuste do modelo
+garch.fit = ugarchfit(spec=garch.spec,data=ibovespa_returns$ret_closing_prices)
+
+#coeficiente de persistência
+persistence <- coef(garch.fit)[3] + coef(garch.fit)[4]
+cat("Coeficiente de persistência (normal):", persistence, "\n")
+
+#half-life
+half_life <- log(2)/log(persistence)
+cat("Half-life (normal):", half_life, "\n")
+```
+
+Agora vamos calcular as mesmas medidas para o modelo ajustado com a distribuição t-Student.
+
+```{r}
+#especificação do modelo
+garch.spec = ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)), mean.model = list(armaOrder=c(0,0),include.mean=TRUE), distribution.model = "std")
+
+#ajuste do modelo
+garch.fit = ugarchfit(spec=garch.spec,data=ibovespa_returns$ret_closing_prices)
+
+#coeficiente de persistência
+persistence <- coef(garch.fit)[3] + coef(garch.fit)[4]
+cat("Coeficiente de persistência (t-Student):", persistence, "\n")
+
+#half-life
+half_life <- log(2)/log(persistence)
+cat("Half-life (t-Student):", half_life, "\n")
+renv::snapshot()
+```

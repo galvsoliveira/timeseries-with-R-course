@@ -1,0 +1,264 @@
+```{r setup, include=FALSE}
+install.packages("renv")
+renv::init()
+
+#renv::restore(clean = TRUE)
+packages <- c(
+    "yfR",
+    "rugarch",
+    "tidyverse",
+    "ggthemes",
+    "cowplot",
+    "conflicted",
+    "forecast",
+    "stats",
+    "tseries"
+)
+
+# Instalar pacotes que ainda não estão instalados
+new_packages <- packages[!(packages %in% installed.packages()[, "Package"])]
+if (length(new_packages)) install.packages(new_packages)
+```
+```{r}
+remotes::install_github("msperlin/yfR")
+
+# Carregar pacotes
+library(conflicted)
+library(cowplot)
+library(yfR)
+library(rugarch)
+library(tidyverse)
+library(ggthemes)
+library(ggplot2)
+library(dplyr)
+library(forecast)
+library(stats)
+library(tseries)
+
+# Limpar o diretório
+rm(list = ls())
+```
+
+```{r}
+# Função para obter dados do Yahoo Finance
+get_data <- function(tickers) {
+  assets <- suppressMessages(
+    yfR::yf_get(
+        tickers,
+        first_date = "2021-01-01",
+        last_date = Sys.time(),
+        type_return = "log",
+        freq_data = "daily"
+    )
+  )
+  assets
+}
+
+
+# Função para plotar gráfico de preços
+plot_prices <- function(data, iticker) {
+  data %>%
+    dplyr::filter(data$ticker == iticker) %>%
+    ggplot(aes(
+        x = ref_date,
+        y = price_close
+    )) +
+    geom_line(color = "#006600") +
+    labs(
+        x = "",
+        y = "Preço Fechamento",
+        title = paste0("Cotação Diária da ", iticker),
+        subtitle = "Período: de 01/01/2021 a 02/09/2023",
+        caption = "Fonte: B3") +
+    theme_economist()
+}
+
+# Função para plotar gráfico de retornos diários
+plot_returns <- function(data, iticker) {
+  data %>%
+    dplyr::filter(data$ticker == iticker) %>%
+    ggplot(aes(
+        x = ref_date,
+        y = ret_closing_prices
+    )) +
+    geom_line(color = "#006600") +
+    labs(
+        x = "",
+        y = "Retornos",
+        title = paste0("Retornos da ", iticker),
+        subtitle = "Período: de 01/01/2021 a 02/09/2023",
+        caption = "Fonte: B3"
+    ) +
+    theme_economist()
+}
+
+# Função para plotar gráfico de retornos absolutos
+plot_volatility <- function(data, iticker) {
+  data %>%
+    dplyr::filter(data$ticker == iticker) %>%
+    ggplot(aes(
+        x = ref_date,
+        y = abs(ret_closing_prices)
+    )) +
+    geom_line(color = "#006600") +
+    labs(
+        x = "",
+        y = "Retornos absolutos",
+        title = paste0("Retornos abs da ", iticker),
+        subtitle = "Período: de 01/01/2021 a 02/09/2023",
+        caption = "Fonte: B3"
+    ) +
+    theme_economist()
+}
+
+# Função para plotar qqplot
+plot_qqplot <- function(data, iticker) {
+  data %>%
+    dplyr::filter(data$ticker == iticker) %>%
+    ggplot(aes(
+        sample = ret_closing_prices
+    )) +
+    stat_qq() +
+    stat_qq_line() +
+      labs(
+        x = "Teórico",
+        y = "Amostra",
+        title = "QQplot",
+        subtitle = paste0("Retornos diários da ", iticker),
+        caption = "Fonte: Elaborado a partir de dados da B3"
+    ) +
+    theme_economist()
+}
+
+# Função para plotar histograma
+plot_histogram <- function(data, iticker) {
+  data %>%
+    dplyr::filter(data$ticker == iticker) %>%
+    ggplot(aes(
+        x = ret_closing_prices,
+        y = after_stat(density)
+        )) +
+      geom_histogram(
+        color = "white",
+        fill = "Dark grey",
+        linetype = "solid",
+        alpha = 0.8
+        ) +
+      geom_density(aes(
+        x = ret_closing_prices,
+        y = after_stat(density)),
+        color = "black"
+        ) +
+      labs(
+        x = "",
+        y = "Densidade",
+        title = "Histograma",
+        subtitle = paste0(
+            "Retornos diários da ",
+            iticker
+            ),
+        caption = "Fonte: Elaborado a partir de dados da B3"
+        ) +
+      theme_economist()
+}
+```
+
+```{r, fig.width = 10, fig.height = 13}
+# Definir tickers das empresas desejadas
+tickers <- c(
+    "^BVSP"
+    )
+
+# Obter dados
+assets <- get_data(tickers)
+colnames(assets)
+
+# plotando os graficos lado a lado
+plot_grid(#plot_prices(assets, "^BVSP"),
+            plot_returns(assets, "^BVSP"),
+            plot_qqplot(assets, "^BVSP"),
+            plot_volatility(assets, "^BVSP"),
+            plot_histogram(assets, "^BVSP"),
+            ncol = 2, nrow = 2)
+
+# Visualizar as funções de autocorrelação (FAC) e autocorrelação parcial (FACP) dos resíduos
+Acf(assets$ret_closing_prices)
+Pacf(assets$ret_closing_prices)
+
+# Realize o teste de Ljung-Box - se o p-valor for menor que 0,05, rejeite a hipótese nula de que os dados são independentes
+resultado_teste <- Box.test(assets$ret_closing_prices, type="Ljung-Box")
+
+# Imprima o resultado do teste
+print(resultado_teste)
+
+# Criar uma função para selecionar automaticamente o melhor modelo ARMA
+selecionar_melhor_modelo <- function(data, max_p, max_q) {
+  # Inicializar variáveis
+  melhor_aic <- Inf
+  melhor_bic <- Inf
+  melhor_modelo <- NULL
+  melhor_p <- NULL
+  melhor_q <- NULL
+
+  # Testar diferentes valores de p e q
+  for (p in 0:max_p) {
+    for (q in 0:max_q) {
+      # Ajustar o modelo ARMA
+      modelo_arma <- arima(data, order=c(p,0,q))
+
+      # Calcular os valores dos critérios de informação AIC e BIC
+      aic_value <- AIC(modelo_arma)
+      bic_value <- BIC(modelo_arma)
+
+      # Verificar se o modelo atual é melhor que o melhor modelo encontrado até agora
+      if (aic_value < melhor_aic && bic_value < melhor_bic) {
+        # Atualizar o melhor modelo
+        melhor_aic <- aic_value
+        melhor_bic <- bic_value
+        melhor_modelo <- modelo_arma
+        melhor_p <- p
+        melhor_q <- q
+      }
+    }
+  }
+
+  # Retornar o melhor modelo encontrado e os valores de p e q
+  return(list(modelo = melhor_modelo, p = melhor_p, q = melhor_q))
+}
+
+# Usar a função para selecionar automaticamente o melhor modelo ARMA para seus dados
+resultado <- selecionar_melhor_modelo(assets$ret_closing_prices, max_p=5, max_q=5)
+melhor_modelo <- resultado$modelo
+melhor_p <- resultado$p
+melhor_q <- resultado$q
+
+# Imprimir os valores de p e q do melhor modelo encontrado
+cat("Melhor modelo ARMA(", melhor_p, ",0,", melhor_q, ")\n", sep="")
+
+# Extrair os valores dos parâmetros e seus erros padrão
+parametros <- melhor_modelo$coef
+erros_padrao <- sqrt(diag(melhor_modelo$var.coef))
+
+# Calcular a estatística-t de cada parâmetro
+t_estatisticas <- parametros / erros_padrao
+
+# Imprimir as estatísticas-t
+print(t_estatisticas)
+
+# Verifique os resíduos do modelo
+checkresiduals(melhor_modelo)
+
+# Realize o teste Ljung-Box nos resíduos
+Box.test(melhor_modelo$residuals, lag=log(length(assets$ret_closing_prices)))
+```
+
+Para o modelo escolhido no exercício anterior, podemos calcular as previsões para 5 períodos à frente, com seu intervalo de confiança correspondente. Vamos usar a função `forecast()` para fazer isso.
+
+```{r}
+#previsão para 5 períodos à frente
+fcast <- forecast(melhor_modelo$residuals, h = 5)
+
+#plot da previsão
+plot(fcast)
+```
+
